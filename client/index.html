@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sheep'll Be Right</title>
+<meta name="description" content="Live as a sheep in New Zealand. Grow wool, get shorn, and grow the export economy together.">
+<meta name="theme-color" content="#bfe6ff">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+<canvas id="c" aria-label="Sheep farm"></canvas>
+<div class="top">
+  <button class="pill" id="money" aria-expanded="false">NZ$ 0 exported</button>
+  <p class="pill" id="online">1 sheep · Auckland</p>
+</div>
+<p class="pill" id="detail" hidden></p>
+<p id="toast" role="status"></p>
+<div id="joy" aria-label="Move"><div id="knob"></div></div>
+<div class="btns">
+  <button class="main" id="baa">Baa!</button>
+  <div class="row">
+    <button id="jump">Jump</button>
+    <button id="nuzzle">Nuzzle</button>
+  </div>
+</div>
+<div id="err">Sorry, this device can't show 3D.</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
