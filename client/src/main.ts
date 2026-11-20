@@ -7,6 +7,8 @@ import { makeSheep, setWool } from './sheepkit.js';
 import { initInput, readInput } from './input';
 import { initHud, say, setOnline, setTotals, showControls, toast, updateHud } from './hud';
 import { createShear } from './shear';
+import { initAnalytics, track } from './analytics';
+import { inAppHint } from './inapp';
 
 const $ = (id: string) => document.getElementById(id)!;
 const canvas = $('c') as HTMLCanvasElement;
@@ -71,6 +73,9 @@ const STAGE_SAY = ['Fresh cut!', 'Sweet as.', 'Getting fluffy...', 'Heavy wool, 
 
 // ── 네트워크 상태
 const uid = (() => { try { let u = localStorage.getItem('uid'); if (!u) { u = crypto.randomUUID(); localStorage.setItem('uid', u); } return u; } catch { return ''; } })();
+initAnalytics(uid); inAppHint();
+// 무료 서버가 잠들어 있으면 첫 접속이 오래 걸림 → 1.5초 안에 못 들어오면 '깨우는 중' 화면
+const wakeT = setTimeout(() => { if (!joined) { $('wake').hidden = false; track('server_wake_wait'); } }, 1500);
 const socket = io(import.meta.env.VITE_SERVER_URL || `${location.protocol}//${location.hostname}:3001`, { transports: ['websocket', 'polling'] });
 let myId = '', offset = 0, growMs = 600_000, milkMs = 180_000, myWoolAt = 0, myMilkAt = 0, queue: string[] = [], joined = false;
 const now = () => Date.now() + offset;
@@ -88,12 +93,13 @@ function removeOther(id: string) { const o = others.get(id); if (o) { scene.remo
 socket.on('connect', () => socket.emit('join', { uid }));
 socket.on('welcome', (w: Welcome, self: PlayerInfo) => {
   for (const id of [...others.keys()]) removeOther(id);
+  clearTimeout(wakeT); $('wake').hidden = true;
   myId = w.id; offset = w.now - Date.now(); growMs = w.growMs; milkMs = w.milkMs; myWoolAt = w.woolAt; myMilkAt = w.milkAt; queue = w.queue;
   w.players.forEach(addOther); setTotals(w.totals); setOnline(w.online);
-  me.root.position.set(self.x, 0, self.z); me.root.visible = true; cam.position.copy(me.root.position).add(camOff); lookAt.copy(me.root.position);
+  me.root.position.set(self.x, 0, self.z); me.root.visible = true; camPos(cam.position, self.x, self.z); lookAt.set(self.x, 1.4, self.z);
   if (mode !== 'walk') { shear.cancel(); mode = 'walk'; showControls(true); }
   if (joined) toast('Back online. Sweet as.', 2);
-  if (!joined) { joined = true; toast(woolOf(myWoolAt) > 0.85 ? "You're a very woolly sheep. Roll to the green ring!" : "Kia ora! You're a sheep now. She'll be right.", 4.5); }
+  if (!joined) { track('join', { channel: w.channel, online: w.online }); joined = true; toast(woolOf(myWoolAt) > 0.85 ? "You're a very woolly sheep. Roll to the green ring!" : "Kia ora! You're a sheep now. She'll be right.", 4.5); }
 });
 socket.on('joined', addOther);
 socket.on('left', removeOther);
@@ -117,7 +123,7 @@ function emote(e: Emote) {
   if (mode === 'shear' || performance.now() - lastEmote < 450) return; lastEmote = performance.now();
   if (e === 'jump') { if (jumpY > 0.01 || mode !== 'walk') return; jumpV = stage === 4 ? 4 : 6.5; }
   else { const self = { root: me.root, lean: 0 }; playEmote(self, e); if (self.lean) lean = 1; }
-  socket.emit('emote', e);
+  socket.emit('emote', e); track('emote', { e });
 }
 $('baa').addEventListener('click', () => emote('baa'));
 $('jump').addEventListener('click', () => emote('jump'));
@@ -127,9 +133,37 @@ initHud();
 
 // ── 카메라
 const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
-const camOff = new THREE.Vector3(0, 7.5, 11), lookAt = new THREE.Vector3();
+const lookAt = new THREE.Vector3();
+// 카메라: 양 주위를 도는 궤도 (yaw 좌우, pitch 위아래, dist 거리). 드래그 = 둘러보기, 두 손가락·휠·버튼 = 줌
+const DIST_MIN = 5, DIST_MAX = 34;
+const view = { yaw: 0, pitch: 0.6, dist: 13.3, tYaw: 0, tPitch: 0.6, tDist: 13.3 };
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const setView = (d: number) => { view.tDist = clamp(d, DIST_MIN, DIST_MAX); };
+const camPos = (out: THREE.Vector3, tx: number, tz: number) =>
+  out.set(tx + Math.sin(view.yaw) * Math.cos(view.pitch) * view.dist, Math.sin(view.pitch) * view.dist, tz + Math.cos(view.yaw) * Math.cos(view.pitch) * view.dist);
+{
+  const ptrs = new Map<number, { x: number; y: number }>();
+  let pinch0 = 0, dist0 = 0;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (mode === 'shear') return;
+    canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = view.tDist; }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const prev = ptrs.get(e.pointerId); if (!prev || mode === 'shear') return;
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1) { view.tYaw -= dx * 0.007; view.tPitch = clamp(view.tPitch + dy * 0.005, 0.2, 1.35); }
+    else if (ptrs.size === 2 && pinch0) { const [a, b] = [...ptrs.values()]; setView(dist0 * pinch0 / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y))); }
+  });
+  const end = (e: PointerEvent) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch0 = 0; };
+  canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); if (mode !== 'shear') setView(view.tDist * (1 + e.deltaY * 0.0012)); }, { passive: false });
+  $('zoomIn').addEventListener('click', () => setView(view.tDist / 1.5));
+  $('zoomOut').addEventListener('click', () => setView(view.tDist * 1.5));
+}
 const size = () => { const w = innerWidth, h = innerHeight; r.setSize(w, h, false); cam.aspect = w / h; cam.fov = w / h < 0.8 ? 52 : 40; cam.updateProjectionMatrix(); };
 addEventListener('resize', size); size();
+if (cam.aspect < 0.8) view.dist = view.tDist = 16;
 
 // ── 털 깎기
 type Mode = 'walk' | 'queue' | 'shear';
@@ -140,6 +174,7 @@ const shear = createShear({
     mode = 'walk'; showControls(true); myWoolAt = now(); vel.set(2.5, 0, 4);
     socket.emit('shear', { clean }, (res: ShearResult) => {
       myWoolAt = res.at;
+      if (res.ok) track('shear', { earned: res.earned, clean });
       if (res.ok) toast(clean ? `Clean blow! Good as gold. +NZ$${res.earned}` : `Sweet as! +NZ$${res.earned} of wool`, 3);
     });
   },
@@ -153,7 +188,10 @@ const angLerp = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b -
 
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
-  const P = me.root.position, inp = readInput();
+  const P = me.root.position, raw = readInput();
+  // 조이스틱은 화면 기준 → 카메라가 돈 만큼 세계 방향으로 돌린다
+  const cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
+  const inp = { x: raw.x * cy + raw.z * sy, z: -raw.x * sy + raw.z * cy, len: raw.len };
   leaveCool = Math.max(0, leaveCool - dt);
 
   // 털 상태 (털 깎는 중에는 깎기 시작할 때 크기로 고정)
@@ -221,7 +259,7 @@ function loop() {
     if (joined && milkReady && Math.hypot(P.x - MILK.x, P.z - MILK.z) < 1.3 && Math.hypot(vel.x, vel.z) < 1.2) {
       if (milkHold === 0) toast('Milking... hold still!', 2);
       milkHold += dt;
-      if (milkHold > 2) { milkHold = 0; myMilkAt = now(); socket.emit('milk', (res: MilkResult) => { myMilkAt = res.at; if (res.ok) toast(`Fresh sheep milk! +NZ$${res.earned}`, 3); }); }
+      if (milkHold > 2) { milkHold = 0; myMilkAt = now(); socket.emit('milk', (res: MilkResult) => { myMilkAt = res.at; if (res.ok) track('milk'); if (res.ok) toast(`Fresh sheep milk! +NZ$${res.earned}`, 3); }); }
     } else milkHold = 0;
     milkRing.material.opacity = milkReady ? 0.55 + Math.sin(t * 4) * 0.3 : 0.15;
   }
@@ -253,7 +291,11 @@ function loop() {
 
   // 카메라: 평소엔 따라가고, 털 깎을 땐 양 앞으로 다가간다
   if (mode === 'shear') { cam.position.lerp(tmpV.set(ZONE.x + 0.5, 3.6, ZONE.z + 8.2), Math.min(1, dt * 3)); lookAt.lerp(tmpV.set(ZONE.x + 0.2, 1.5, ZONE.z), Math.min(1, dt * 3)); }
-  else { tmpV.copy(P).add(camOff); tmpV.y = camOff.y; cam.position.lerp(tmpV, Math.min(1, dt * 4)); lookAt.lerp(tmpV.set(P.x, 1.4, P.z - 1.5), Math.min(1, dt * 4)); }
+  else {
+    const e = Math.min(1, dt * 8);
+    view.yaw += (view.tYaw - view.yaw) * e; view.pitch += (view.tPitch - view.pitch) * e; view.dist += (view.tDist - view.dist) * e;
+    camPos(tmpV, P.x, P.z); cam.position.lerp(tmpV, Math.min(1, dt * 6)); lookAt.lerp(tmpV.set(P.x, 1.4, P.z), Math.min(1, dt * 6));
+  }
   cam.lookAt(lookAt);
 
   shear.update(dt); updateHud(dt, cam);

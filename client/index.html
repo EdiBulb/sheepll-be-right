@@ -29,6 +29,22 @@
     <button id="nuzzle">Nuzzle</button>
   </div>
 </div>
+<div class="zoom">
+  <button id="zoomIn" aria-label="Zoom in">+</button>
+  <button id="zoomOut" aria-label="Zoom out">−</button>
+</div>
+<div id="inapp" hidden>
+  <p id="inappText"></p>
+  <a id="inappGo" hidden>Open in Chrome</a>
+  <button id="inappX" aria-label="Close">×</button>
+</div>
+<div id="wake" hidden>
+  <div>
+    <div class="wakeSheep" aria-hidden="true"></div>
+    <p id="wakeText">Waking the sheep up...</p>
+    <p class="wakeSub">The farm naps when nobody's around. Up in about a minute.</p>
+  </div>
+</div>
 <div id="err">Sorry, this device can't show 3D.</div>
 <script type="module" src="/src/main.ts"></script>
 </body>
