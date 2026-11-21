@@ -9,6 +9,12 @@ import { initHud, say, setOnline, setTotals, showControls, toast, updateHud } fr
 import { createShear } from './shear';
 import { initAnalytics, track } from './analytics';
 import { inAppHint } from './inapp';
+import { createSound } from './sound';
+import { compose, grab, share } from './photo';
+import { createSky } from './sky';
+import { bakeStatic } from './bake';
+import { markVisit, save, store } from './store';
+import { ITEMS, wear } from './wardrobe';
 
 const $ = (id: string) => document.getElementById(id)!;
 const canvas = $('c') as HTMLCanvasElement;
@@ -20,7 +26,7 @@ r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneM
 
 // ── 세계
 const scene = new THREE.Scene();
-const { solids } = buildWorld(scene, { ...MOODS.sunny, noPlayer: true, noQueue: true, noNpc: true }) as { solids: { x: number; z: number; r: number }[] };
+const { solids, clouds } = buildWorld(scene, { ...MOODS.sunny, noPlayer: true, noQueue: true, noNpc: true }) as { solids: { x: number; z: number; r: number }[]; clouds: THREE.Object3D[] };
 scene.traverse((o: any) => { if (o.isDirectionalLight) o.shadow.mapSize.set(1024, 1024); });
 
 const SHEEP = { legLen: 0.24, ears: 'up', woolGlow: 0xeef6ff, puffN: 60, puffR: 0.38, body: [1.12, 0.95, 1.05] };
@@ -57,6 +63,22 @@ const milkRing = ring(0x4aa3e0, MILK);
   solids.push({ x: g.position.x, z: g.position.z, r: 0.6 });
 }
 
+// 움직이지 않는 것(땅·나무·울타리·헛간·NPC)은 합쳐서 그리기 횟수를 줄인다. 구름·새는 움직이므로 빼고.
+const sky = createSky(scene, clouds);
+bakeStatic(scene);
+
+// ── 소리
+const sound = createSound();
+sound.setOn(store.soundOn);
+const renderSoundBtn = () => {
+  $('soundWaves').toggleAttribute('hidden', !store.soundOn); $('soundX').toggleAttribute('hidden', store.soundOn);
+  $('soundBtn').setAttribute('aria-label', store.soundOn ? 'Turn sound off' : 'Turn sound on');
+};
+renderSoundBtn();
+$('soundBtn').addEventListener('click', () => { store.soundOn = !store.soundOn; save(); sound.setOn(store.soundOn); renderSoundBtn(); track('sound_toggled', { on: store.soundOn }); });
+addEventListener('pointerdown', () => { if (store.soundOn && !sound.started) sound.unlock(); }, { capture: true });
+document.addEventListener('visibilitychange', () => (document.hidden ? sound.pause() : sound.resume()));
+
 // ── 내 양: root(위치·방향) → pivot(구르기 회전) → sheep
 function makeBody(opts: any) {
   const root = new THREE.Group(), pivot = new THREE.Group(), sheep = makeSheep(opts);
@@ -64,6 +86,7 @@ function makeBody(opts: any) {
   return { root, pivot, sheep };
 }
 const me = makeBody(SHEEP);
+wear(me.sheep, store.wearing);
 me.root.visible = false;
 
 const STAGES = [
@@ -85,20 +108,21 @@ interface Remote { root: THREE.Group; pivot: THREE.Group; sheep: THREE.Group; tx
 const others = new Map<string, Remote>();
 function addOther(p: PlayerInfo) {
   if (p.id === myId || others.has(p.id)) return;
-  const b = makeBody(SHEEP_LITE); b.root.position.set(p.x, 0, p.z); b.root.rotation.y = p.ry;
+  const b = makeBody(SHEEP_LITE); b.root.position.set(p.x, 0, p.z); b.root.rotation.y = p.ry; wear(b.sheep, p.acc);
   others.set(p.id, { ...b, tx: p.x, tz: p.z, try: p.ry, st: p.st, woolAt: p.woolAt, jumpV: 0, jumpY: 0, lean: 0 });
 }
 function removeOther(id: string) { const o = others.get(id); if (o) { scene.remove(o.root); others.delete(id); } }
 
-socket.on('connect', () => socket.emit('join', { uid }));
+socket.on('connect', () => socket.emit('join', { uid, acc: store.wearing }));
 socket.on('welcome', (w: Welcome, self: PlayerInfo) => {
   for (const id of [...others.keys()]) removeOther(id);
   clearTimeout(wakeT); $('wake').hidden = true;
   myId = w.id; offset = w.now - Date.now(); growMs = w.growMs; milkMs = w.milkMs; myWoolAt = w.woolAt; myMilkAt = w.milkAt; queue = w.queue;
-  w.players.forEach(addOther); setTotals(w.totals); setOnline(w.online);
+  w.players.forEach(addOther); setTotals(w.totals); ships = Math.floor(w.totals.money / 10_000); setOnline(w.online);
   me.root.position.set(self.x, 0, self.z); me.root.visible = true; camPos(cam.position, self.x, self.z); lookAt.set(self.x, 1.4, self.z);
   if (mode !== 'walk') { shear.cancel(); mode = 'walk'; showControls(true); }
   if (joined) toast('Back online. Sweet as.', 2);
+  if (markVisit()) checkUnlocks();
   if (!joined) { track('join', { channel: w.channel, online: w.online }); joined = true; toast(woolOf(myWoolAt) > 0.85 ? "You're a very woolly sheep. Roll to the green ring!" : "Kia ora! You're a sheep now. She'll be right.", 4.5); }
 });
 socket.on('joined', addOther);
@@ -106,9 +130,24 @@ socket.on('left', removeOther);
 socket.on('moves', (ms: Move[]) => { for (const [id, x, z, ry, st] of ms) { const o = others.get(id); if (o) { o.tx = x; o.tz = z; o.try = ry; o.st = st; } } });
 socket.on('queue', (q: string[]) => { queue = q; });
 socket.on('sheared', (id: string, at: number) => { const o = others.get(id); if (o) { o.woolAt = at; shear.burst(o.root.position); } });
-socket.on('totals', setTotals);
+let ships = -1;
+socket.on('totals', (t: Totals) => {
+  setTotals(t);
+  const n = Math.floor(t.money / 10_000);
+  if (ships >= 0 && n > ships) { toast('A ship just sailed with our wool! Good as gold.', 3.5); sound.chime(); track('ship_sailed', { ships: n }); }
+  ships = n;
+});
+socket.on('wear', (id: string, acc: string) => { const o = others.get(id); if (o) wear(o.sheep, acc); });
 socket.on('online', setOnline);
-socket.on('emote', (id: string, e: Emote) => { const o = others.get(id); if (o) playEmote(o, e); });
+socket.on('emote', (id: string, e: Emote) => { const o = others.get(id); if (!o) return; playEmote(o, e); soundAt(o.root.position, e); });
+/** 다른 양의 소리: 멀수록 작게, 화면 왼쪽/오른쪽에 따라 좌우로 */
+const sv = new THREE.Vector3();
+function soundAt(pos: THREE.Vector3, e: Emote) {
+  const d = pos.distanceTo(me.root.position), vol = Math.max(0, 1 - d / 26);
+  sv.copy(pos).project(cam); const pan = Math.max(-0.9, Math.min(0.9, sv.x));
+  if (e === 'baa') sound.baa(vol * 0.8, pan, 0.9 + Math.random() * 0.25);
+  else if (e === 'nuzzle' && vol > 0.5) sound.nuzzle();
+}
 socket.on('disconnect', () => toast('Reconnecting...', 60));
 
 // ── 감정 표현
@@ -123,6 +162,8 @@ function emote(e: Emote) {
   if (mode === 'shear' || performance.now() - lastEmote < 450) return; lastEmote = performance.now();
   if (e === 'jump') { if (jumpY > 0.01 || mode !== 'walk') return; jumpV = stage === 4 ? 4 : 6.5; }
   else { const self = { root: me.root, lean: 0 }; playEmote(self, e); if (self.lean) lean = 1; }
+  if (e === 'baa') sound.baa(1, 0, 1); else if (e === 'jump') sound.jump(); else sound.nuzzle();
+  store.emotes++; save();
   socket.emit('emote', e); track('emote', { e });
 }
 $('baa').addEventListener('click', () => emote('baa'));
@@ -170,11 +211,15 @@ type Mode = 'walk' | 'queue' | 'shear';
 let mode: Mode = 'walk', stage = -1, shearWool = 1, leaveCool = 0, leaveHold = 0, milkHold = 0;
 const shear = createShear({
   scene, cam, canvas, sheep: me.sheep, zone: ZONE, solids,
+  onCut: () => sound.cut(), onBuzz: (on) => sound.clipper(on), onBale: () => sound.thump(),
   onFinish(clean) {
     mode = 'walk'; showControls(true); myWoolAt = now(); vel.set(2.5, 0, 4);
     socket.emit('shear', { clean }, (res: ShearResult) => {
       myWoolAt = res.at;
-      if (res.ok) track('shear', { earned: res.earned, clean });
+      if (res.ok) {
+        track('shear', { earned: res.earned, clean }); sound.chime();
+        store.shears++; if (clean) store.cleanBlows++; store.earned += res.earned; store.kg = Math.round((store.kg + 4.5 * Math.min(1, shearWool / 0.85)) * 10) / 10; save(); checkUnlocks();
+      }
       if (res.ok) toast(clean ? `Clean blow! Good as gold. +NZ$${res.earned}` : `Sweet as! +NZ$${res.earned} of wool`, 3);
     });
   },
@@ -182,7 +227,7 @@ const shear = createShear({
 function leaveQueue() { socket.emit('dequeue'); if (shear.state !== 'off') shear.cancel(); mode = 'walk'; showControls(true); leaveCool = 3; }
 
 const vel = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), axis = new THREE.Vector3(), tmpV = new THREE.Vector3();
-let yaw = Math.PI, sendT = 0, lastSent = '';
+let yaw = Math.PI, sendT = 0, lastSent = '', lastBounce = 0;
 const clock = new THREE.Clock();
 const angLerp = (a: number, b: number, k: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
 
@@ -240,7 +285,7 @@ function loop() {
     const myR = 0.9 + wool * 0.5;
     const bump = (ox: number, oz: number, or: number) => {
       const dx = P.x - ox, dz = P.z - oz, d = Math.hypot(dx, dz), m = myR + or;
-      if (d < m && d > 0.0001) { const nx = dx / d, nz = dz / d; P.x = ox + nx * m; P.z = oz + nz * m; const vn = vel.x * nx + vel.z * nz; if (vn < 0) { const k = stage === 4 ? 1.8 : 1; vel.x -= k * vn * nx; vel.z -= k * vn * nz; } }
+      if (d < m && d > 0.0001) { const nx = dx / d, nz = dz / d; P.x = ox + nx * m; P.z = oz + nz * m; const vn = vel.x * nx + vel.z * nz; if (vn < 0) { const k = stage === 4 ? 1.8 : 1; vel.x -= k * vn * nx; vel.z -= k * vn * nz; if (stage === 4 && vn < -1.2 && t - lastBounce > 0.25) { lastBounce = t; sound.bounce(); } } }
     };
     for (const o of solids) bump(o.x, o.z, o.r);
     for (const o of others.values()) bump(o.root.position.x, o.root.position.z, 0.8 + woolOf(o.woolAt) * 0.4);
@@ -259,7 +304,7 @@ function loop() {
     if (joined && milkReady && Math.hypot(P.x - MILK.x, P.z - MILK.z) < 1.3 && Math.hypot(vel.x, vel.z) < 1.2) {
       if (milkHold === 0) toast('Milking... hold still!', 2);
       milkHold += dt;
-      if (milkHold > 2) { milkHold = 0; myMilkAt = now(); socket.emit('milk', (res: MilkResult) => { myMilkAt = res.at; if (res.ok) track('milk'); if (res.ok) toast(`Fresh sheep milk! +NZ$${res.earned}`, 3); }); }
+      if (milkHold > 2) { milkHold = 0; myMilkAt = now(); socket.emit('milk', (res: MilkResult) => { myMilkAt = res.at; if (res.ok) { track('milk'); sound.milk(); store.milks++; store.litres = Math.round((store.litres + 0.5) * 10) / 10; store.earned += res.earned; save(); checkUnlocks(); } if (res.ok) toast(`Fresh sheep milk! +NZ$${res.earned}`, 3); }); }
     } else milkHold = 0;
     milkRing.material.opacity = milkReady ? 0.55 + Math.sin(t * 4) * 0.3 : 0.15;
   }
@@ -298,10 +343,45 @@ function loop() {
   }
   cam.lookAt(lookAt);
 
-  shear.update(dt); updateHud(dt, cam);
+  shear.update(dt); sky.update(dt, t); updateHud(dt, cam);
   r.render(scene, cam);
   requestAnimationFrame(loop);
 }
+// ── 내 기록과 옷장 (이 브라우저에만 저장)
+const known = new Set(ITEMS.filter((i) => i.unlocked(store)).map((i) => i.id));
+function checkUnlocks() {
+  for (const it of ITEMS) if (!known.has(it.id) && it.unlocked(store)) { known.add(it.id); toast(`New in your wardrobe: ${it.name}! Tap the sheep button to wear it.`, 4); track('unlock', { item: it.id }); }
+}
+function renderMe() {
+  const stats: [string, string][] = [
+    ['Times shorn', String(store.shears)], ['Clean blows', String(store.cleanBlows)],
+    ['Wool given', `${store.kg.toLocaleString('en-NZ')} kg`], ['Milk given', `${store.litres.toLocaleString('en-NZ')} L`],
+    ['Added to exports', `NZ$ ${store.earned.toLocaleString('en-NZ')}`], ['Days on the farm', String(store.days.length)],
+  ];
+  $('meStats').replaceChildren(...stats.map(([k, v]) => { const d = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; d.append(dt, dd); return d; }));
+  $('wardrobe').replaceChildren(...[{ id: '', name: 'Nothing', how: 'Just wool', unlocked: () => true }, ...ITEMS].map((it) => {
+    const b = document.createElement('button'), open = it.unlocked(store), name = document.createElement('span'), how = document.createElement('small');
+    name.textContent = it.name; how.textContent = open ? (store.wearing === it.id ? 'Wearing' : 'Tap to wear') : it.how;
+    b.append(name, how); b.disabled = !open; b.setAttribute('aria-pressed', String(store.wearing === it.id));
+    b.addEventListener('click', () => { store.wearing = it.id; save(); wear(me.sheep, it.id); socket.emit('wear', it.id); track('wear', { item: it.id || 'none' }); renderMe(); });
+    return b;
+  }));
+}
+$('meBtn').addEventListener('click', () => { renderMe(); $('mePanel').hidden = false; track('me_opened'); });
+$('meClose').addEventListener('click', () => { $('mePanel').hidden = true; });
+$('mePanel').addEventListener('click', (e) => { if (e.target === $('mePanel')) $('mePanel').hidden = true; });
+
+// ── 사진: 버튼은 숨기고 장면만
+const LINES = ['Living my best sheep life.', "She'll be right.", 'Just a sheep, no worries.', 'Fresh off the farm.'];
+$('photoBtn').addEventListener('click', async () => {
+  document.body.classList.add('shot');
+  const shot = grab(canvas, () => r.render(scene, cam));
+  document.body.classList.remove('shot');
+  const line = stage === 0 ? 'Fresh cut, feeling light.' : stage === 4 ? 'Too much wool. Rolling now.' : LINES[Math.floor(Math.random() * LINES.length)];
+  const blob = await compose(shot, line); if (!blob) return;
+  const how = await share(blob); track('photo', { how, stage });
+});
+
 loop();
 
-if (location.search.includes('debug')) (window as any).__dbg = { me, others, cam, puffs: me.sheep.userData.puffs, get mode() { return mode; }, get queue() { return queue; }, get stage() { return stage; }, ZONE, MILK };
+if (location.search.includes('debug')) (window as any).__dbg = { r, store, me, others, cam, puffs: me.sheep.userData.puffs, get mode() { return mode; }, get queue() { return queue; }, get stage() { return stage; }, ZONE, MILK };

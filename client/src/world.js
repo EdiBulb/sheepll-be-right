@@ -78,8 +78,9 @@ export function buildWorld(scene, o) {
   }
 
   // ── 구름
+  const cloudGroups = [];
   (o.clouds ?? [[-20, 22, -40], [18, 26, -50], [0, 30, -70], [35, 20, -30]]).forEach(([x, y, z]) => {
-    const c = new THREE.Group(); c.position.set(x, y, z); scene.add(c);
+    const c = new THREE.Group(); c.position.set(x, y, z); scene.add(c); cloudGroups.push(c);
     [[0, 0, 0, 3], [3, -0.5, 0, 2.4], [-3, -0.6, 0, 2.2], [1.4, 1.4, 0, 2.2]].forEach(([a, b, d, r]) => {
       const m = new THREE.Mesh(S(r, 18), M(o.cloud ?? 0xffffff, o.mat === 'standard' || !o.mat ? { emissive: o.cloud ?? 0xffffff, emissiveIntensity: 0.35 } : {}));
       m.position.set(a, b, d); c.add(m);
@@ -153,7 +154,7 @@ export function buildWorld(scene, o) {
     add(d, S(0.3), M(0x24242a), 0.95, 1.15, 0, 1.1, 1, 0.9);
     [[-0.4, 0.25], [-0.4, -0.25], [0.4, 0.25], [0.4, -0.25]].forEach(([x, z]) => add(d, new THREE.CapsuleGeometry(0.1, 0.4, 4, 8), M(0xffffff), x, 0.3, z));
   }
-  return { solids };
+  return { solids, clouds: cloudGroups };
 }
 
 function buildSheep(o, M, S, add, shorn) {

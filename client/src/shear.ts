@@ -9,6 +9,7 @@ export function createShear(o: {
   scene: THREE.Scene; cam: THREE.Camera; canvas: HTMLCanvasElement; sheep: THREE.Group;
   zone: THREE.Vector3; solids: { x: number; z: number; r: number }[];
   onFinish: (clean: boolean) => void;
+  onCut?: () => void; onBuzz?: (on: boolean) => void; onBale?: () => void;
 }) {
   const { scene, cam, canvas, sheep } = o;
   const { puffs, woolCore, skinCore, body } = sheep.userData as { puffs: THREE.Mesh[]; woolCore: THREE.Mesh; skinCore: THREE.Mesh; body: THREE.Group };
@@ -67,18 +68,18 @@ export function createShear(o: {
       p.getWorldPosition(wp);
       const pr = ((p.geometry as THREE.SphereGeometry).parameters.radius || 0.3) * woolScale * p.scale.x;
       if (p === hit.object || wp.distanceTo(hit.point) - pr < 0.16 * woolScale) {
-        p.visible = false; if (front.has(p)) removed++; strokeHit = true; buzz = 0.12; flyToPile(wp);
+        p.visible = false; if (front.has(p)) removed++; strokeHit = true; buzz = 0.12; flyToPile(wp); o.onCut?.();
       }
     }
     if (removed / Math.max(1, front.size) > 0.75) finish();
   }
-  canvas.addEventListener('pointerdown', (e) => { if (state !== 'shear') return; dragging = true; strokeHit = false; shave(e); });
+  canvas.addEventListener('pointerdown', (e) => { if (state !== 'shear') return; dragging = true; strokeHit = false; o.onBuzz?.(true); shave(e); });
   canvas.addEventListener('pointermove', (e) => { if (state === 'shear' && dragging) shave(e); });
-  addEventListener('pointerup', () => { if (state === 'shear' && dragging && strokeHit) strokes++; dragging = false; clipper.visible = false; });
+  addEventListener('pointerup', () => { if (state === 'shear' && dragging && strokeHit) strokes++; if (dragging) o.onBuzz?.(false); dragging = false; clipper.visible = false; });
 
   function finish() {
     if (strokeHit) strokes++;
-    state = 'finish'; finishT = 0; dragging = false; clipper.visible = false;
+    state = 'finish'; finishT = 0; dragging = false; clipper.visible = false; o.onBuzz?.(false);
     for (const p of puffs) if (p.visible) { p.visible = false; flyToPile(p.getWorldPosition(wp), 0.5); }
   }
   function restore() { puffs.forEach((p) => (p.visible = true)); woolCore.visible = true; skinCore.visible = false; sheep.position.x = 0; clipper.visible = false; }
@@ -90,7 +91,7 @@ export function createShear(o: {
       woolCore.visible = false; skinCore.visible = true;
     },
     /** 줄에서 밀려났을 때 등, 보상 없이 원래대로 */
-    cancel() { if (state === 'off') return; state = 'off'; restore(); pileTarget = 0; },
+    cancel() { if (state === 'off') return; state = 'off'; restore(); pileTarget = 0; o.onBuzz?.(false); },
     /** 다른 양이 털 깎였을 때의 털 날림 */
     burst(at: THREE.Vector3) {
       for (let i = 0; i < 12; i++) {
@@ -108,7 +109,7 @@ export function createShear(o: {
           const m = pile.clone(); scene.add(m); pile.scale.setScalar(0.001); pileTarget = 0;
           flakes.push({ m, from: PILE.clone(), to: BALE.clone().add(new THREE.Vector3(0, 1, 0)), t: 0.8, T: 0.8 });
         }
-        if (finishT > 1.6) { state = 'off'; restore(); balePop = 0.2; o.onFinish(strokes <= 6); }
+        if (finishT > 1.6) { state = 'off'; restore(); balePop = 0.2; o.onBale?.(); o.onFinish(strokes <= 6); }
       }
       for (let i = flakes.length - 1; i >= 0; i--) {
         const f = flakes[i]; f.t -= dt;

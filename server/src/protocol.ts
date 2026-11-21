@@ -6,7 +6,7 @@ export type St = 0 | 1 | 4 | 5;
 export type Move = [string, number, number, number, St];
 export type Emote = 'baa' | 'jump' | 'nuzzle';
 
-export interface PlayerInfo { id: string; x: number; z: number; ry: number; st: St; /** 마지막으로 털 깎인 서버 시각(ms) */ woolAt: number }
+export interface PlayerInfo { id: string; x: number; z: number; ry: number; st: St; /** 마지막으로 털 깎인 서버 시각(ms) */ woolAt: number; /** 머리 소품 id ('' = 없음) */ acc: string }
 export interface Totals { money: number; kg: number; litres: number }
 
 export interface Welcome {

@@ -35,3 +35,27 @@ button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
 .wakeSheep { width: 96px; height: 72px; margin: 0 auto; border-radius: 48px; background: #fff; box-shadow: -26px -6px 0 -6px #fff, 26px -6px 0 -6px #fff, 0 -18px 0 -4px #fff; animation: bob 1.4s ease-in-out infinite; }
 @keyframes bob { 50% { transform: translateY(-8px); } }
 @media (prefers-reduced-motion: reduce) { .wakeSheep { animation: none; } }
+
+#mePanel, #photoBox { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(36,50,74,.35); z-index: 8; }
+#mePanel[hidden], #photoBox[hidden] { display: none; }
+.card { width: min(380px, 100%); max-height: 86vh; overflow-y: auto; background: #fff; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.cardHead { display: flex; justify-content: space-between; align-items: center; }
+.card h2 { margin: 0; font-size: 26px; font-weight: 400; }
+.card h3 { margin: 8px 0 0; font-size: 20px; font-weight: 400; }
+.card .sub { margin: 0; font-size: 14px; color: #3A4A66; }
+.cardHead button { min-width: 44px; padding: 0; font-size: 24px; background: #EEF4FA; }
+#meStats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 4px 0; }
+#meStats div { background: #F4FAFF; border-radius: 14px; padding: 10px 12px; }
+#meStats dt { font-size: 13px; color: #3A4A66; }
+#meStats dd { margin: 2px 0 0; font-size: 22px; }
+#wardrobe { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#wardrobe button { min-height: 64px; border-radius: 14px; background: #F4FAFF; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 8px 12px; text-align: left; box-shadow: none; }
+#wardrobe button small { font-size: 12px; color: #3A4A66; }
+#wardrobe button[aria-pressed=true] { background: #FFE27A; }
+#wardrobe button:disabled { opacity: .55; cursor: default; }
+#photoImg { width: 100%; border-radius: 14px; display: block; }
+.card .row { display: flex; gap: 8px; }
+.btnlike { flex: 1; display: grid; place-items: center; min-height: 48px; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; }
+#photoClose { flex: 1; background: #EEF4FA; }
+.zoom button svg { display: block; margin: auto; }
+body.shot .top, body.shot .zoom, body.shot #joy, body.shot .btns, body.shot .bubble, body.shot #toast { visibility: hidden; }

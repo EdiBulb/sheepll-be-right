@@ -33,6 +33,9 @@ function pickChannel(): Channel {
 /** uid → 마지막 털 깎인 시각 / 우유 짠 시각. 모르는 uid는 털·우유가 가득 찬 상태로 시작 */
 const woolAt = new Map<string, number>(), milkAt = new Map<string, number>();
 
+const ACCS = ['daisy', 'bow', 'scarf', 'crown', 'beanie'];
+const cleanAcc = (v: unknown) => (typeof v === 'string' && ACCS.includes(v) ? v : '');
+
 type Data = { channel?: Channel; uid: string; budget: number; lastEmote: number };
 type Sock = Socket<any, any, any, Data>;
 
@@ -54,14 +57,14 @@ function leave(s: Sock) {
 io.on('connection', (s: Sock) => {
   s.data.budget = 20; s.data.lastEmote = 0; s.data.uid = s.id;
 
-  s.on('join', (p: { uid?: string }) => {
+  s.on('join', (p: { uid?: string; acc?: string }) => {
     leave(s);
     const now = Date.now();
     s.data.uid = typeof p?.uid === 'string' && p.uid ? p.uid.slice(0, 40) : s.id;
     const c = pickChannel(); s.data.channel = c;
     const wa = woolAt.get(s.data.uid) ?? now - GROW_MS, ma = milkAt.get(s.data.uid) ?? now - MILK_MS;
     const a = Math.random() * Math.PI * 2;
-    const me: PlayerInfo = { id: s.id, x: 3 + Math.cos(a) * 2, z: 6 + Math.sin(a) * 2, ry: Math.PI, st: 0, woolAt: wa };
+    const me: PlayerInfo = { id: s.id, x: 3 + Math.cos(a) * 2, z: 6 + Math.sin(a) * 2, ry: Math.PI, st: 0, woolAt: wa, acc: cleanAcc(p?.acc) };
     const w: Welcome = { id: s.id, now, channel: c.n, players: [...c.players.values()], totals, woolAt: wa, milkAt: ma, queue: c.queue, growMs: GROW_MS, milkMs: MILK_MS, online: online() };
     c.players.set(s.id, me); s.join(c.key);
     s.emit('welcome', w, me); s.to(c.key).emit('joined', me); io.emit('online', online());
@@ -82,6 +85,12 @@ io.on('connection', (s: Sock) => {
     const c = s.data.channel, now = Date.now();
     if (!c || !['baa', 'jump', 'nuzzle'].includes(e) || now - s.data.lastEmote < 400) return;
     s.data.lastEmote = now; s.to(c.key).emit('emote', s.id, e);
+  });
+
+  s.on('wear', (id: string) => {
+    const c = s.data.channel, me = c?.players.get(s.id), now = Date.now();
+    if (!c || !me || now - s.data.lastEmote < 400) return;
+    s.data.lastEmote = now; me.acc = cleanAcc(id); s.to(c.key).emit('wear', s.id, me.acc);
   });
 
   s.on('enqueue', () => { const c = s.data.channel; if (c && !c.queue.includes(s.id)) setQueue(c, [...c.queue, s.id]); });
