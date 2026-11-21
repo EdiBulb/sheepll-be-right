@@ -10,11 +10,13 @@ export function setTotals(t: Totals) {
   const ships = Math.floor(t.money / 10_000);
   $('detail').textContent = `Wool ${t.kg.toLocaleString('en-NZ')} kg\nMilk ${t.litres.toLocaleString('en-NZ')} L\nShips sailed ${ships}`;
 }
-export function setOnline(n: number) { $('online').textContent = `${n} sheep · Auckland`; }
+let place = 'Auckland';
+export function setPlace(name: string) { place = name; }
+export function setOnline(n: number) { $('online').textContent = `${n} sheep · ${place}`; }
 export function initHud() {
   $('money').addEventListener('click', () => { const d = $('detail'); d.hidden = !d.hidden; $('money').setAttribute('aria-expanded', String(!d.hidden)); });
 }
-export function showControls(on: boolean) { document.querySelectorAll<HTMLElement>('#joy, .btns').forEach((el) => (el.style.visibility = on ? '' : 'hidden')); }
+export function showControls(on: boolean) { document.querySelectorAll<HTMLElement>('#joy, .btns, #mini, #guide').forEach((el) => (el.style.visibility = on ? '' : 'hidden')); }
 
 // ── 양 머리 위 말풍선
 const bubbles: { el: HTMLElement; target: THREE.Object3D; t: number; h: number }[] = [];

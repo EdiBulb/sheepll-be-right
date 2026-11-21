@@ -21,12 +21,19 @@
 </div>
 <p class="pill" id="detail" hidden></p>
 <p id="toast" role="status"></p>
+<p id="hint" hidden></p>
+<p id="guide" hidden><span id="guideArrow" aria-hidden="true">↑</span><span id="guideText"></span></p>
+<button id="mini" aria-label="Open the map"><canvas id="miniC" width="192" height="192"></canvas></button>
 <div id="joy" aria-label="Move"><div id="knob"></div></div>
 <div class="btns">
   <button class="main" id="baa">Baa!</button>
   <div class="row">
     <button id="jump">Jump</button>
     <button id="nuzzle">Nuzzle</button>
+  </div>
+  <div class="row">
+    <button id="graze" aria-pressed="false">Graze</button>
+    <button id="rest" aria-pressed="false">Rest</button>
   </div>
 </div>
 <div class="zoom">
@@ -44,6 +51,22 @@
     <h3>Wardrobe</h3>
     <p class="sub">Earn little things by living on the farm. Everyone sees what you wear.</p>
     <div id="wardrobe"></div>
+    <h3>Friends</h3>
+    <p class="sub">Send a link. Anyone who opens it lands on your farm and you'll see a little heart over each other.</p>
+    <button id="invite" class="wide">Invite a friend</button>
+  </div>
+</div>
+<div id="mapPanel" role="dialog" aria-labelledby="mapTitle" hidden>
+  <div class="card">
+    <div class="cardHead"><h2 id="mapTitle">Map</h2><button id="mapClose" aria-label="Close">×</button></div>
+    <canvas id="bigMap" width="560" height="560" aria-label="Map of this farm"></canvas>
+    <p class="sub" id="mapLegend"></p>
+    <h3>Farm fund</h3>
+    <p class="sub" id="fundText"></p>
+    <div id="voteList"></div>
+    <h3>New Zealand</h3>
+    <p class="sub">Tap a farm to move there. New farms open when the flock votes to build them.</p>
+    <div id="nzMap"></div>
   </div>
 </div>
 <div id="photoBox" hidden>

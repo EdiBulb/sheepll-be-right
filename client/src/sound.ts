@@ -117,6 +117,16 @@ export function createSound() {
     milk() { if (!ready()) return; const t = ctx!.currentTime; for (let i = 0; i < 4; i++) noise(t + i * 0.22, 0.14, 'bandpass', rand(2500, 3200), 2, 0.25); },
     thump() { if (ready()) { const t = ctx!.currentTime; tone(fx, t, 120, 50, 0.25, 0.6); noise(t, 0.12, 'lowpass', 400, 0.7, 0.3); } },
     chime() { if (ready()) { const t = ctx!.currentTime; [784, 988, 1319].forEach((f, i) => tone(fx, t + i * 0.09, f, f, 0.5, 0.18)); } },
+    /** 양치기 개 짖는 소리 */
+    bark(vol = 1) {
+      if (!ready() || vol < 0.05) return;
+      const t = ctx!.currentTime;
+      for (let i = 0; i < 2; i++) { tone(fx, t + i * 0.16, 520, 300, 0.11, 0.4 * vol, 0, 'sawtooth'); noise(t + i * 0.16, 0.09, 'bandpass', 1300, 1.5, 0.35 * vol); }
+    },
+    /** 수출선 뱃고동 */
+    horn() { if (ready()) { const t = ctx!.currentTime; tone(fx, t, 147, 147, 1.6, 0.4, 0, 'sawtooth'); tone(fx, t, 110, 110, 1.6, 0.35, 0, 'square'); tone(fx, t + 1.9, 147, 147, 0.7, 0.4, 0, 'sawtooth'); } },
+    /** 풀 뜯는 소리 */
+    munch() { if (ready()) { const t = ctx!.currentTime; noise(t, 0.06, 'bandpass', 1800, 2, 0.16); noise(t + 0.13, 0.06, 'bandpass', 1500, 2, 0.13); } },
     bounce() { if (ready()) tone(fx, ctx!.currentTime, 220, 120, 0.12, 0.25, 0, 'triangle'); },
   };
 }

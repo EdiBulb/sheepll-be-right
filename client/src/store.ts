@@ -13,13 +13,17 @@ export interface Store {
   days: string[];      // 들어온 날 (최근 60일)
   wearing: string;     // 지금 쓰고 있는 소품 id ('' = 없음)
   soundOn: boolean;
+  happy: number;       // 풀 뜯고 쉬면서 쌓인 행복 (0~1). 털 깎을 때 보너스가 되고 0으로 돌아간다
+  tut: number;         // 처음 안내 단계 (3 = 끝)
+  party: string;       // 초대 링크로 묶인 친구 코드
+  voteDay: string;     // 마지막으로 투표한 날
 }
 
 const KEY = 'sheep-store';
 export const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(new Date());
 
 function load(): Store {
-  const base: Store = { shears: 0, cleanBlows: 0, kg: 0, milks: 0, litres: 0, earned: 0, emotes: 0, firstVisit: today(), days: [], wearing: '', soundOn: true };
+  const base: Store = { shears: 0, cleanBlows: 0, kg: 0, milks: 0, litres: 0, earned: 0, emotes: 0, firstVisit: today(), days: [], wearing: '', soundOn: true, happy: 0, tut: 0, party: '', voteDay: '' };
   try { return { ...base, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return base; }
 }
 export const store = load();

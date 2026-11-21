@@ -52,9 +52,10 @@ export function makeSheep(p) {
   const tuft = p.tuft ?? 1;
   if (tuft > 0) [[0, 0.5, -0.05, 0.3], [-0.26, 0.42, 0.02, 0.24], [0.26, 0.42, 0.02, 0.24], [-0.13, 0.58, -0.22, 0.24], [0.13, 0.58, -0.22, 0.24], [0, 0.42, 0.22, 0.2]]
     .forEach(([x, y, z, r]) => add(head, S(r * tuft, 20), woolM, x, y + (tuft - 1) * 0.15, z));
+  const ears = [], eyes = [];
   [-1, 1].forEach((s) => {
     if (p.ears !== 'none') {
-      const ear = new THREE.Group(); head.add(ear);
+      const ear = new THREE.Group(); head.add(ear); ears.push(ear); ear.userData.side = s;
       if (p.ears === 'floppy') { ear.position.set(s * 0.58, -0.02, 0.08); ear.rotation.z = s * -1.35; ear.rotation.x = 0.25; }
       else if (p.ears === 'up') { ear.position.set(s * 0.4, 0.42, -0.08); ear.rotation.z = s * 0.5; }
       else { ear.position.set(s * 0.62, 0.08, -0.05); ear.rotation.z = s * -0.5; ear.rotation.y = s * 0.3; }
@@ -67,9 +68,11 @@ export function makeSheep(p) {
       const lid = add(head, new THREE.TorusGeometry(0.075 * es, 0.018, 10, 20, Math.PI), eyeM, ex, ey, 0.52);
       lid.rotation.z = Math.PI;
     } else {
-      add(head, S(0.1 * es, 24), eyeM, ex, ey, 0.5, 1, 1.2, 0.6);
-      add(head, S(0.032 * es, 12), white, ex + 0.03 * es, ey + 0.05 * es, 0.56);
-      add(head, S(0.016 * es, 10), white, ex - 0.03 * es, ey - 0.03 * es, 0.56);
+      // 눈은 깜빡이거나 감을 수 있게 묶어 둔다
+      const eye = new THREE.Group(); eye.position.set(ex, ey, 0.5); head.add(eye); eyes.push(eye);
+      add(eye, S(0.1 * es, 24), eyeM, 0, 0, 0, 1, 1.2, 0.6);
+      add(eye, S(0.032 * es, 12), white, 0.03 * es, 0.05 * es, 0.06);
+      add(eye, S(0.016 * es, 10), white, -0.03 * es, -0.03 * es, 0.06);
     }
     if (p.cheek !== false) add(head, S(0.09, 16), cheekM, s * 0.36, -0.14, 0.42, 1.2, 0.7, 0.4);
     if (p.horns) {
@@ -78,10 +81,12 @@ export function makeSheep(p) {
     }
   });
   if (p.tag) add(head, new THREE.BoxGeometry(0.16, 0.2, 0.04), new THREE.MeshStandardMaterial({ color: 0xffd23f }), 0.52, 0.5, 0.02); // NPC 양의 노란 농장 태그
+  add(head, S(0.05, 12), new THREE.MeshStandardMaterial({ color: 0xe8a0a0, roughness: 0.5 }), 0, -0.09, 0.53, 1.5, 0.9, 0.6); // 분홍 코
   const mouth = new THREE.MeshStandardMaterial({ color: 0x6b4a45 });
   if (p.mouth !== 'none') [-1, 1].forEach((s) => { const m = add(head, new THREE.TorusGeometry(0.05, 0.014, 10, 20, Math.PI), mouth, s * 0.05, -0.17, 0.5); m.rotation.z = Math.PI; });
   const shornM = add(g, S(0.8), faceM, 0, 0, 0, 0.95 * bx, 0.78 * by, 1.12 * bz); shornM.visible = false;
-  g.userData = { body, head, shornM, legLen, by, bz, hs, puffs, woolCore, skinCore };
+  const tail = body.children[body.children.length - 1];
+  g.userData = { body, head, shornM, legLen, by, bz, hs, puffs, woolCore, skinCore, ears, eyes, tail, phase: Math.random() * 10, earBase: ears.map((e) => e.rotation.z) };
   return g;
 }
 
@@ -97,4 +102,20 @@ export function setWool(sheep, w) {
   const hw = shorn ? 0.85 : ws;
   head.position.y = (shorn ? 0.78 + legLen : bodyY) + 0.5 * by * hw;
   head.position.z = 1.1 * bz * hw + 0.12 * hs;
+}
+
+/**
+ * 얼굴과 자세의 작은 움직임. setWool() 다음에 부른다.
+ * graze 0~1: 고개를 숙여 풀을 뜯음, asleep: 눈을 감음
+ */
+export function animate(sheep, t, graze = 0, asleep = false) {
+  const u = sheep.userData, tt = t + u.phase;
+  const blink = asleep ? 0.12 : (tt % 4.2 < 0.12 ? 0.15 : 1);
+  for (const e of u.eyes) e.scale.y += (blink - e.scale.y) * 0.5;
+  // 귀: 가끔 한 번씩 털기
+  const flick = (tt % 6.5 < 0.35) ? Math.sin((tt % 6.5) / 0.35 * Math.PI * 2) * 0.35 : 0;
+  u.ears.forEach((e, i) => { e.rotation.z = u.earBase[i] + flick * e.userData.side; });
+  u.tail.position.x = Math.sin(tt * 7) * 0.05 * (tt % 5 < 1.2 ? 1 : 0); // 꼬리 살랑
+  u.head.position.y -= 0.5 * graze; u.head.position.z += 0.12 * graze;
+  u.head.rotation.x = 0.75 * graze + (graze > 0.5 ? Math.sin(tt * 9) * 0.06 : 0);
 }
